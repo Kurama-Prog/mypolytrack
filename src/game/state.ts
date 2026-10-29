@@ -23,6 +23,7 @@ import {
 import { Menu } from '../ui/menu';
 import { Hud } from '../ui/hud';
 import { PauseScreen, ResultsScreen, SettingsScreen } from '../ui/screens';
+import { TouchControls } from '../ui/touch-controls';
 import { AudioStore, AudioSystem, loadAudioSettings, saveAudioSettings } from '../audio';
 
 type GameState = 'boot' | 'menu' | 'loading' | 'race' | 'paused' | 'results';
@@ -44,6 +45,7 @@ export class Game {
   private readonly settings: SettingsScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
+  private readonly touch: TouchControls;
 
   private readonly carModel = createCarModel({ bodyColor: 0xff5a3c, accentColor: 0xffc93c });
   private readonly ghostModel = createCarModel({ ghost: true });
@@ -105,6 +107,7 @@ export class Game {
 
     this.input.attach();
     this.input.onAction((action) => this.handleAction(action));
+    this.touch = new TouchControls(this.input, uiHost);
     window.addEventListener('resize', () => this.renderer.resize());
     this.audio.attachUi(uiHost);
 
@@ -198,6 +201,7 @@ export class Game {
     this.settings.close();
     this.carModel.group.visible = false;
     this.ghostModel.group.visible = false;
+    this.touch.hide();
     this.menu.show();
     this.menu.refreshBests();
     this.menu.setSelected(this.trackIndex);
@@ -287,12 +291,14 @@ export class Game {
     await this.fade(false);
     this.state = 'race';
     this.transitioning = false;
+    this.touch.show();
   }
 
   private handleFinish(result: RaceResult) {
     if (!this.session) return;
     const track = this.session.track;
     this.state = 'results';
+    this.touch.hide();
     this.hud.hide();
     this.hud.clearCenter();
     this.ghostModel.group.visible = false;
@@ -325,6 +331,7 @@ export class Game {
     if (!this.session) return;
     this.state = 'paused';
     this.input.clear();
+    this.touch.hide();
     this.audio.setScene('paused');
     this.pause.open({
       time: this.session.time,
@@ -339,6 +346,7 @@ export class Game {
     this.pause.close();
     this.input.clear();
     this.state = 'race';
+    this.touch.show();
     this.audio.setScene('race');
   }
 

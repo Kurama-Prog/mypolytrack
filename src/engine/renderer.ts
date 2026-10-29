@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import type { TrackPalette } from '../track/types';
 
+/**
+ * Tablets report a device pixel ratio of 2–3; capping lower keeps the fill-rate
+ * affordable on iPad GPUs with almost no visible difference at arm's length.
+ */
+const MAX_PIXEL_RATIO =
+  typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? 1.6 : 2;
+
 const SKY_VERTEX = /* glsl */ `
   varying vec3 vDir;
   void main() {
@@ -52,7 +59,7 @@ export class SceneRenderer {
       antialias: true,
       powerPreference: 'high-performance'
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setClearColor(0x0b1421, 1);
@@ -124,7 +131,7 @@ export class SceneRenderer {
   resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();

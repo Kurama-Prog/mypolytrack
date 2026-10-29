@@ -6,6 +6,9 @@ export interface DriveInput {
   steer: number;
 }
 
+/** On-screen controls feed these instead of physical keys. */
+export type VirtualKey = 'left' | 'right' | 'throttle' | 'brake';
+
 const BLOCK_DEFAULT = new Set([
   'ArrowUp',
   'ArrowDown',
@@ -18,18 +21,21 @@ const BLOCK_DEFAULT = new Set([
 
 export class InputManager {
   private keys = new Set<string>();
+  private virtual = new Set<VirtualKey>();
   private listeners = new Set<(action: GameAction) => void>();
 
   attach() {
     window.addEventListener('keydown', this.handleDown, { passive: false });
     window.addEventListener('keyup', this.handleUp);
     window.addEventListener('blur', this.clear);
+    document.addEventListener('visibilitychange', this.handleVisibility);
   }
 
   detach() {
     window.removeEventListener('keydown', this.handleDown);
     window.removeEventListener('keyup', this.handleUp);
     window.removeEventListener('blur', this.clear);
+    document.removeEventListener('visibilitychange', this.handleVisibility);
   }
 
   onAction(listener: (action: GameAction) => void): () => void {
@@ -37,15 +43,28 @@ export class InputManager {
     return () => this.listeners.delete(listener);
   }
 
+  /** Press or release a virtual (touch) button. Repeated calls are idempotent. */
+  setVirtual(key: VirtualKey, pressed: boolean) {
+    if (pressed) this.virtual.add(key);
+    else this.virtual.delete(key);
+  }
+
+  /** Lets on-screen buttons reuse the keyboard action channel. */
+  trigger(action: GameAction) {
+    this.emit(action);
+  }
+
+  /** Drops both keyboard and virtual state — used when the race stops. */
   clear() {
     this.keys.clear();
+    this.virtual.clear();
   }
 
   get drive(): DriveInput {
-    const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft');
-    const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
-    const up = this.keys.has('KeyW') || this.keys.has('ArrowUp');
-    const down = this.keys.has('KeyS') || this.keys.has('ArrowDown');
+    const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft') || this.virtual.has('left');
+    const right = this.keys.has('KeyD') || this.keys.has('ArrowRight') || this.virtual.has('right');
+    const up = this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.virtual.has('throttle');
+    const down = this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.virtual.has('brake');
 
     return {
       throttle: up ? 1 : 0,
@@ -87,6 +106,11 @@ export class InputManager {
 
   private handleUp = (event: KeyboardEvent) => {
     this.keys.delete(event.code);
+  };
+
+  /** Tabbing away must not leave the throttle stuck on. */
+  private handleVisibility = () => {
+    if (document.hidden) this.clear();
   };
 
   private emit(action: GameAction) {

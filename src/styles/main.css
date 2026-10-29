@@ -2019,3 +2019,323 @@ input[type='range']::-moz-range-thumb {
     gap: 8px;
   }
 }
+
+/* ==========================================================================
+   Touch controls — tablets get an on-screen driving pad
+   ========================================================================== */
+
+html.has-touch,
+html.has-touch body {
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+}
+
+#game-canvas {
+  touch-action: none;
+}
+
+html.has-touch .keys {
+  display: none;
+}
+
+/* Lift the speed readout above the throttle pad. */
+html.has-touch .hud-br {
+  bottom: calc(152px + env(safe-area-inset-bottom, 0px));
+  right: calc(26px + env(safe-area-inset-right, 0px));
+}
+
+/* --- touch menu affordances ---------------------------------------------- */
+
+/*
+ * iOS keeps :hover latched after a tap, so the desktop lift would leave a card
+ * floating forever and the hover-only CTA would stay hidden before the tap.
+ * Reset the lift and promote the CTA to a permanent, always-visible target.
+ */
+html.has-touch .track-card:hover {
+  transform: none;
+  border-color: var(--stroke);
+  box-shadow: 0 20px 40px -30px #000;
+}
+
+html.has-touch .track-card:active {
+  transform: scale(0.985);
+  border-color: rgba(255, 201, 60, 0.55);
+  box-shadow: 0 14px 30px -26px #000;
+}
+
+html.has-touch .card-cta {
+  opacity: 1;
+  transform: none;
+}
+
+html.has-touch .card-glow {
+  opacity: 0.5;
+}
+
+html.has-touch .track-card:active .card-glow {
+  opacity: 1;
+}
+
+/* 40px is under the comfortable thumb target; bump it and keep the icon centred. */
+html.has-touch .icon-btn {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.has-touch .chip {
+  display: none;
+}
+
+/* Safety net: never let a short viewport silently clip the last card. */
+html.has-touch .menu-main {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* iPad Safari chrome trims roughly 80px off 820, so tighten the hero a notch. */
+@media (max-height: 900px) {
+  html.has-touch .menu-main {
+    gap: 22px;
+  }
+
+  html.has-touch .menu-heading h2 {
+    margin-top: 10px;
+    font-size: clamp(28px, 5vw, 42px);
+  }
+
+  html.has-touch .menu-heading .lede {
+    display: none;
+  }
+
+  html.has-touch .card-thumb {
+    aspect-ratio: 16 / 7.2;
+  }
+}
+
+/* Split view / iPad mini: trade more thumbnail height for a reachable layout. */
+@media (max-height: 780px) {
+  html.has-touch .menu-main {
+    justify-content: flex-start;
+    gap: 18px;
+  }
+
+  html.has-touch .menu-heading h2 {
+    font-size: clamp(24px, 4.4vw, 34px);
+  }
+
+  html.has-touch .card-thumb {
+    aspect-ratio: 16 / 6.2;
+  }
+}
+
+.touch-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  touch-action: none;
+  opacity: 1;
+  transition: opacity 180ms var(--ease);
+}
+
+.touch-controls.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.touch-key {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(14, 26, 43, 0.62);
+  border: 1px solid rgba(168, 182, 204, 0.28);
+  color: var(--ink);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    transform 120ms var(--ease),
+    background 120ms var(--ease),
+    border-color 120ms var(--ease),
+    box-shadow 120ms var(--ease);
+}
+
+.touch-key svg {
+  width: 46%;
+  height: 46%;
+  display: block;
+}
+
+.touch-key.is-active {
+  transform: scale(0.94);
+}
+
+/* --- steering ------------------------------------------------------------ */
+
+.touch-key--steer {
+  width: 78px;
+  height: 78px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.touch-key--left {
+  left: calc(26px + env(safe-area-inset-left, 0px));
+}
+
+.touch-key--right {
+  left: calc(26px + 78px + 12px + env(safe-area-inset-left, 0px));
+}
+
+.touch-key--steer.is-active {
+  background: rgba(255, 90, 60, 0.28);
+  border-color: rgba(255, 90, 60, 0.72);
+  box-shadow: inset 0 0 18px rgba(255, 90, 60, 0.32);
+}
+
+/* --- throttle / brake ---------------------------------------------------- */
+
+.touch-key--throttle {
+  width: 106px;
+  height: 106px;
+  right: calc(26px + env(safe-area-inset-right, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  border-color: rgba(255, 201, 60, 0.42);
+  color: var(--gold);
+}
+
+.touch-key--throttle.is-active {
+  background: rgba(255, 201, 60, 0.3);
+  border-color: rgba(255, 201, 60, 0.85);
+  box-shadow: inset 0 0 22px rgba(255, 201, 60, 0.36);
+}
+
+.touch-key--brake {
+  width: 76px;
+  height: 76px;
+  right: calc(26px + 106px + 12px + env(safe-area-inset-right, 0px));
+  bottom: calc(24px + 46px + env(safe-area-inset-bottom, 0px));
+  color: var(--muted);
+}
+
+.touch-key--brake.is-active {
+  background: rgba(255, 77, 77, 0.26);
+  border-color: rgba(255, 77, 77, 0.72);
+  box-shadow: inset 0 0 18px rgba(255, 77, 77, 0.3);
+  color: var(--red);
+}
+
+/* --- pause --------------------------------------------------------------- */
+
+.touch-key--pause {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
+  top: calc(112px + env(safe-area-inset-top, 0px));
+  left: calc(26px + env(safe-area-inset-left, 0px));
+  color: var(--muted);
+}
+
+.touch-key--pause.is-active {
+  background: rgba(168, 182, 204, 0.2);
+}
+
+@media (max-width: 900px) {
+  .touch-key--steer {
+    width: 66px;
+    height: 66px;
+  }
+
+  .touch-key--right {
+    left: calc(26px + 66px + 10px + env(safe-area-inset-left, 0px));
+  }
+
+  .touch-key--throttle {
+    width: 88px;
+    height: 88px;
+  }
+
+  .touch-key--brake {
+    width: 64px;
+    height: 64px;
+    right: calc(26px + 88px + 10px + env(safe-area-inset-right, 0px));
+  }
+
+  .touch-key--pause {
+    top: calc(96px + env(safe-area-inset-top, 0px));
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* --- portrait guard ------------------------------------------------------ */
+
+.rotate-hint {
+  display: none;
+}
+
+/* The hint node only exists on touch devices, so a plain portrait query is enough. */
+@media (orientation: portrait) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 32px;
+    text-align: center;
+    background: rgba(11, 20, 33, 0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .rotate-hint__icon {
+    width: 54px;
+    height: 54px;
+    border: 2px solid var(--muted);
+    border-radius: 12px;
+    animation: rotate-nudge 2.4s var(--ease) infinite;
+  }
+
+  .rotate-hint__title {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+
+  .rotate-hint__note {
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 300px;
+    line-height: 1.6;
+  }
+
+  html.has-touch .touch-controls {
+    display: none;
+  }
+}
+
+@keyframes rotate-nudge {
+  0%,
+  45%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70%,
+  85% {
+    transform: rotate(-90deg);
+  }
+}
