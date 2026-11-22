@@ -256,6 +256,10 @@ export class Game {
         this.hud.toast('RESPAWN', 'bad');
         this.audio.respawn();
       },
+      onHazard: () => {
+        this.hud.toast('IMPACT', 'bad');
+        this.audio.hazard();
+      },
       onFinish: (result) => this.handleFinish(result)
     });
 
@@ -399,6 +403,8 @@ export class Game {
       if (track) {
         this.orbitAngle += dt * 0.1;
         this.cameraRig.orbit(this.renderer.camera, this.heroPoint(track), 47, this.orbitAngle, dt);
+        // Keep the machinery ticking so a menu preview shows the rhythm.
+        track.hazards?.advance(dt);
       }
     } else if (this.session) {
       this.syncVisuals(dt, this.input.drive.steer);

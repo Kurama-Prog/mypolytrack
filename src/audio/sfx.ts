@@ -7,6 +7,7 @@ export type SfxEvent =
   | 'boost'
   | 'land'
   | 'finish'
+  | 'hazard'
   | 'respawn'
   | 'click'
   | 'ignition'
@@ -99,6 +100,12 @@ export class Sfx {
             delay: 0.12 + index * 0.07
           });
         });
+        break;
+
+      case 'hazard':
+        this.noiseBurst(0.22, { gain: 0.17, freq: 2400, to: 380, q: 1.3 });
+        this.tone(152, 0.34, { type: 'square', gain: 0.12, to: 56, filter: 1100 });
+        this.tone(430, 0.15, { type: 'triangle', gain: 0.075, to: 176, delay: 0.01, filter: 2600 });
         break;
 
       case 'respawn':

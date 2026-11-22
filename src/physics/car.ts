@@ -139,7 +139,8 @@ function stepGrounded(
 ) {
   const frame = track.query.frameAtS(car.s);
 
-  if (!frame.solid) {
+  // A collapsible deck that is currently folded open behaves like a gap.
+  if (!frame.solid || !track.surfaceSolidAt(car.s)) {
     launch(car, frame);
     return;
   }
@@ -254,6 +255,7 @@ function stepAirborne(
 
   const hit = track.query.nearest(car.pos.x, car.pos.y, car.pos.z);
   if (!hit || !hit.solid) return;
+  if (!track.surfaceSolidAt(hit.s)) return;
   if (Math.abs(hit.n) > hit.halfWidth - 0.1) return;
 
   const surfaceUpVelocity = car.vel.dot(hit.up);
@@ -276,4 +278,33 @@ function stepAirborne(
   // Landing scrub
   car.v *= tuning.gripMode === 'grip' ? 0.985 : 0.955;
   car.speed = Math.abs(car.v);
+}
+
+/**
+ * Punted sideways by a timed obstacle: kills most of the speed, throws the car
+ * into the air towards the nearest edge and lets the normal air physics carry
+ * it — including off the bridge, where `killY` recycles it.
+ */
+export function applyKnock(car: CarState, track: BuiltTrack) {
+  const frame = track.query.frameAtS(car.s);
+  const heading = tmpForward
+    .copy(frame.tangent)
+    .multiplyScalar(Math.cos(car.psi))
+    .addScaledVector(frame.right, Math.sin(car.psi))
+    .normalize();
+  const side = car.n === 0 ? 1 : Math.sign(car.n);
+
+  car.v *= 0.45;
+  car.pos.copy(frame.pos).addScaledVector(frame.right, car.n).addScaledVector(frame.up, CAR_LIFT + 0.2);
+  car.vel
+    .copy(heading)
+    .multiplyScalar(Math.max(8, car.v))
+    .addScaledVector(frame.right, side * 13)
+    .addScaledVector(frame.up, 7.5);
+  car.grounded = false;
+  car.airTime = 0.2;
+  car.psi *= 0.35;
+  car.boosting = false;
+  car.speed = car.vel.length();
+  orientCar(car.quat, heading, frame.up);
 }

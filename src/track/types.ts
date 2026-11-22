@@ -1,6 +1,6 @@
 import type { Vector3 } from 'three';
 
-export type Difficulty = 'Easy' | 'Medium' | 'Hard';
+export type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Very Hard';
 
 /** Per-piece behaviour flags. */
 export interface PieceFlags {
@@ -14,7 +14,15 @@ export interface PieceFlags {
 
 export type TrackPiece =
   | { kind: 'straight'; length: number; slope?: number }
-  | { kind: 'curve'; length: number; angle: number; bank?: number; slope?: number }
+  | {
+      kind: 'curve';
+      length: number;
+      angle: number;
+      bank?: number;
+      slope?: number;
+      /** Metres over which the bank angle eases in and out (default 0). */
+      bankRamp?: number;
+    }
   | { kind: 'ramp'; length: number; rise: number }
   | { kind: 'loop'; radius: number; drift?: number }
   | { kind: 'gap'; length: number };
@@ -36,9 +44,38 @@ export interface TrackPalette {
 
 export interface SceneryConfig {
   seed: number;
-  style: 'valley' | 'canyon' | 'ice';
+  style: 'valley' | 'canyon' | 'ice' | 'ocean';
   density: number;
 }
+
+export type HazardKind = 'gate' | 'collapse';
+
+interface HazardBase {
+  /** Arc-length position in metres along the centreline. */
+  at: number;
+  /** Full cycle length in seconds. */
+  period: number;
+  /** Phase offset in cycles (0..1). */
+  phase?: number;
+}
+
+/** Two half-width panels that trade places, leaving one lane open. */
+export interface GateHazard extends HazardBase {
+  kind: 'gate';
+  /** Fraction of the cycle a panel stays down (default 0.5). */
+  duty?: number;
+}
+
+/** Grilled deck that folds open on a timer. */
+export interface CollapseHazard extends HazardBase {
+  kind: 'collapse';
+  /** Deck length in metres. */
+  length: number;
+  /** Fraction of the cycle the deck stays closed (default 0.55). */
+  duty?: number;
+}
+
+export type HazardSpec = GateHazard | CollapseHazard;
 
 export interface TrackDef {
   id: string;
@@ -48,6 +85,8 @@ export interface TrackDef {
   pieces: Piece[];
   /** Normalised checkpoint positions (0..1 of total length). */
   checkpoints: number[];
+  /** Optional timed obstacles, positioned by arc length in metres. */
+  hazards?: HazardSpec[];
   palette: TrackPalette;
   scenery: SceneryConfig;
   groundY: number;

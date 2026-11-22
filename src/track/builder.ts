@@ -1,11 +1,15 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { CenterlineSample, TrackDef } from './types';
 import { TrackQuery } from './query';
 import { carvedGroundHeight, createScenery } from './scenery';
+import { collapseRanges, createHazards, type HazardField } from './hazards';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const SAMPLE_STEP = 1.25;
 const DEFAULT_WIDTH = 15;
+const PYLON_STEP = 52;
+const TOWER_STEP = 268;
 
 export interface BuiltTrack {
   def: TrackDef;
@@ -19,6 +23,9 @@ export interface BuiltTrack {
   killY: number;
   center: THREE.Vector3;
   radius: number;
+  hazards: HazardField | null;
+  /** False while a collapsible deck under `s` is folded open. */
+  surfaceSolidAt(s: number): boolean;
 }
 
 interface SurfaceData {
@@ -66,6 +73,11 @@ function wrapAngle(angle: number): number {
   while (value > Math.PI) value -= Math.PI * 2;
   while (value < -Math.PI) value += Math.PI * 2;
   return value;
+}
+
+function smoothstep(t: number): number {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
 }
 
 /* --------------------------------------------------------------------------
@@ -154,6 +166,9 @@ export function buildCenterline(def: TrackDef): CenterlineSample[] {
         const dYaw = piece.angle / steps;
         const pitch = Math.atan(piece.slope ?? 0);
         const bank = Math.sign(piece.angle) * (piece.bank ?? 0);
+        // Ease the bank in and out so a wall-style corner does not twist the
+        // road surface by 70° between two samples.
+        const ramp = Math.min(piece.bankRamp ?? 0, piece.length / 2);
 
         for (let i = 0; i < steps; i++) {
           yaw += dYaw * 0.5;
@@ -165,7 +180,9 @@ export function buildCenterline(def: TrackDef): CenterlineSample[] {
           tmpRight.crossVectors(tmpTan, WORLD_UP).normalize();
           tmpUp.crossVectors(tmpRight, tmpTan).normalize();
           if (bank !== 0) {
-            tmpRight.applyAxisAngle(tmpTan, -bank);
+            const along = i * ds;
+            const ease = ramp > 0 ? Math.min(smoothstep(along / ramp), smoothstep((piece.length - along) / ramp)) : 1;
+            tmpRight.applyAxisAngle(tmpTan, -bank * ease);
             tmpUp.crossVectors(tmpRight, tmpTan).normalize();
           }
           commit(tmpTan, tmpRight, tmpUp);
@@ -388,6 +405,115 @@ function sampleIndexAtS(samples: CenterlineSample[], s: number): number {
   return Math.abs(samples[lo].s - s) <= Math.abs(samples[hi].s - s) ? lo : hi;
 }
 
+function paintGeo(geo: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
+  const count = geo.attributes.position.count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+
+/** A box stretched between two points — used for beams and stay cables. */
+function strut(a: THREE.Vector3, b: THREE.Vector3, width: number, color: THREE.Color): THREE.BufferGeometry {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const length = Math.max(0.02, dir.length());
+  const geo = new THREE.BoxGeometry(width, length, width);
+  geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(WORLD_UP, dir.normalize()));
+  geo.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return paintGeo(geo, color);
+}
+
+/**
+ * Support structure for an ocean circuit: column pairs every PYLON_STEP metres
+ * and cable-stayed towers every TOWER_STEP, merged into a single mesh.
+ */
+function createBridge(samples: CenterlineSample[], def: TrackDef, accent: THREE.Color): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'bridge';
+  const geometries: THREE.BufferGeometry[] = [];
+  const total = samples[samples.length - 1].s;
+  const waterY = def.groundY;
+  const concrete = new THREE.Color(def.palette.rail).multiplyScalar(0.55);
+  const cable = accent.clone().lerp(new THREE.Color(0xffffff), 0.35);
+
+  for (let s = PYLON_STEP * 0.5; s < total; s += PYLON_STEP) {
+    const frame = samples[sampleIndexAtS(samples, s)];
+    // Wall-style corners are cantilevered — a vertical column there would hang
+    // in mid-air beside the tilted deck.
+    if (frame.up.y < 0.62) continue;
+    const columnHeight = frame.pos.y - 2.6 - waterY;
+    if (columnHeight < 6) continue;
+
+    const lateral = new THREE.Vector3(frame.right.x, 0, frame.right.z).normalize();
+    const tops: THREE.Vector3[] = [];
+    for (const side of [-1, 1]) {
+      const x = frame.pos.x + lateral.x * side * (frame.halfWidth + 1.5);
+      const z = frame.pos.z + lateral.z * side * (frame.halfWidth + 1.5);
+      const column = new THREE.BoxGeometry(2.1, columnHeight, 2.1);
+      column.translate(x, waterY + columnHeight / 2, z);
+      geometries.push(paintGeo(column, concrete));
+      tops.push(new THREE.Vector3(x, frame.pos.y - 2.9, z));
+    }
+    geometries.push(strut(tops[0], tops[1], 1.3, concrete));
+  }
+
+  for (let s = TOWER_STEP * 0.5; s < total; s += TOWER_STEP) {
+    const frame = samples[sampleIndexAtS(samples, s)];
+    if (frame.up.y < 0.62) continue;
+    const towerHeight = 34;
+    const lateral = new THREE.Vector3(frame.right.x, 0, frame.right.z).normalize();
+    const tops: THREE.Vector3[] = [];
+
+    for (const side of [-1, 1]) {
+      const x = frame.pos.x + lateral.x * side * (frame.halfWidth + 2.4);
+      const z = frame.pos.z + lateral.z * side * (frame.halfWidth + 2.4);
+      const tower = new THREE.BoxGeometry(2.4, towerHeight, 2.4);
+      tower.translate(x, frame.pos.y + towerHeight / 2 - 1, z);
+      geometries.push(paintGeo(tower, concrete));
+      tops.push(new THREE.Vector3(x, frame.pos.y + towerHeight - 1, z));
+
+      const base = new THREE.Vector3(x, waterY + (frame.pos.y - 2.6 - waterY) * 0.5, z);
+      geometries.push(strut(base, new THREE.Vector3(x, frame.pos.y, z), 1.1, concrete));
+    }
+
+    geometries.push(strut(tops[0], tops[1], 1.7, concrete));
+
+    for (const side of [-1, 1]) {
+      const top = tops[side === -1 ? 0 : 1];
+      for (const offset of [-84, -46, 46, 84]) {
+        const anchorS = Math.min(total - 1, Math.max(1, s + offset));
+        const anchorFrame = samples[sampleIndexAtS(samples, anchorS)];
+        const anchorLateral = new THREE.Vector3(anchorFrame.right.x, 0, anchorFrame.right.z).normalize();
+        const anchor = anchorFrame.pos
+          .clone()
+          .addScaledVector(anchorLateral, side * (anchorFrame.halfWidth + 1.4))
+          .addScaledVector(anchorFrame.up, 0.15);
+        geometries.push(strut(top, anchor, 0.24, cable));
+      }
+    }
+  }
+
+  if (geometries.length === 0) return group;
+
+  const merged = mergeGeometries(geometries, false);
+  for (const geometry of geometries) geometry.dispose();
+  if (!merged) return group;
+
+  merged.computeVertexNormals();
+  merged.computeBoundingSphere();
+  const mesh = new THREE.Mesh(
+    merged,
+    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
+  );
+  mesh.name = 'bridge-merged';
+  group.add(mesh);
+  return group;
+}
+
 export function buildTrack(def: TrackDef): BuiltTrack {
   const samples = buildCenterline(def);
   const totalLength = samples[samples.length - 1].s;
@@ -414,10 +540,16 @@ export function buildTrack(def: TrackDef): BuiltTrack {
   const edge = (sample: CenterlineSample, offset: number, lift: number) =>
     sample.pos.clone().addScaledVector(sample.right, offset).addScaledVector(sample.up, lift);
 
+  // Collapsible decks are drawn by the hazard field instead, so the static
+  // road strip must not leave a fixed floor underneath them.
+  const deckRanges = collapseRanges(def.hazards);
+  const onDeck = (s: number) => deckRanges.some((range) => s > range.from - 0.7 && s < range.to + 0.7);
+
   for (let i = 0; i < samples.length - 1; i++) {
     const a = samples[i];
     const b = samples[i + 1];
     if (!a.solid || !b.solid) continue;
+    if (onDeck(a.s) || onDeck(b.s)) continue;
 
     const aw = a.halfWidth;
     const bw = b.halfWidth;
@@ -557,25 +689,55 @@ export function buildTrack(def: TrackDef): BuiltTrack {
   const bounds = { center, radius };
 
   // Ground
-  // 220 segments ≈ 24.5 m cells, small enough that the carved road shelf is
-  // actually sampled and never spans a whole terrain triangle.
-  const groundGeo = new THREE.PlaneGeometry(5400, 5400, 220, 220);
-  groundGeo.rotateX(-Math.PI / 2);
-  const positions = groundGeo.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < positions.count; i++) {
-    const x = positions.getX(i);
-    const z = positions.getZ(i);
-    positions.setY(i, carvedGroundHeight(x, z, query, def.groundY));
+  const ocean = def.scenery.style === 'ocean';
+  if (ocean) {
+    // Flat sea with a shallow swell; the circuit floats above it on pylons.
+    const waterGeo = new THREE.PlaneGeometry(5400, 5400, 132, 132);
+    waterGeo.rotateX(-Math.PI / 2);
+    const pos = waterGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      pos.setY(i, Math.sin(x * 0.011) * 0.55 + Math.cos(z * 0.013) * 0.45);
+    }
+    waterGeo.computeVertexNormals();
+    const water = new THREE.Mesh(
+      waterGeo,
+      new THREE.MeshLambertMaterial({ color: def.palette.ground, flatShading: true })
+    );
+    water.position.y = def.groundY;
+    water.name = 'sea';
+    group.add(water);
+
+    group.add(createBridge(samples, def, accent));
+  } else {
+    // 220 segments ≈ 24.5 m cells, small enough that the carved road shelf is
+    // actually sampled and never spans a whole terrain triangle.
+    const groundGeo = new THREE.PlaneGeometry(5400, 5400, 220, 220);
+    groundGeo.rotateX(-Math.PI / 2);
+    const positions = groundGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const z = positions.getZ(i);
+      positions.setY(i, carvedGroundHeight(x, z, query, def.groundY));
+    }
+    groundGeo.computeVertexNormals();
+    const groundMat = new THREE.MeshLambertMaterial({ color: def.palette.ground, flatShading: true });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.position.y = def.groundY;
+    ground.name = 'ground';
+    group.add(ground);
   }
-  groundGeo.computeVertexNormals();
-  const groundMat = new THREE.MeshLambertMaterial({ color: def.palette.ground, flatShading: true });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.position.y = def.groundY;
-  ground.name = 'ground';
-  group.add(ground);
 
   // Scenery
   group.add(createScenery(def, samples, query, bounds));
+
+  // Timed obstacles
+  const hazards = def.hazards && def.hazards.length > 0 ? createHazards(def.hazards, query, def.palette) : null;
+  if (hazards) group.add(hazards.group);
+
+  // A fall into the sea should recycle the car at the water line, not 50 m below it.
+  const killY = ocean ? Math.max(min.y - 55, def.groundY + 2) : min.y - 55;
 
   return {
     def,
@@ -586,9 +748,11 @@ export function buildTrack(def: TrackDef): BuiltTrack {
     checkpoints,
     start: samples[0],
     finish: samples[samples.length - 1],
-    killY: min.y - 55,
+    killY,
     center,
-    radius: radius + 30
+    radius: radius + 30,
+    hazards,
+    surfaceSolidAt: (s: number) => (hazards ? hazards.solidAt(s) : true)
   };
 }
 

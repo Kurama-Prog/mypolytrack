@@ -3,7 +3,7 @@ import type { AudioStore } from '../audio/settings';
 import type { ScoreEntry } from '../storage/storage';
 import type { Difficulty } from '../track/types';
 import { AudioPanel } from './audio-panel';
-import { escapeHtml, formatTime, qs } from './dom';
+import { difficultyClass, escapeHtml, formatTime, qs } from './dom';
 import { TuningPanel } from './tuning';
 
 function screen(className: string): HTMLElement {
@@ -233,7 +233,7 @@ export class ResultsScreen {
     qs('[data-track]', this.root).textContent = data.trackName;
     qs('[data-time]', this.root).textContent = formatTime(data.time);
     qs('[data-diff]', this.root).innerHTML =
-      `<span class="diff diff--${data.difficulty.toLowerCase()}">${data.difficulty.toUpperCase()}</span>`;
+      `<span class="${difficultyClass(data.difficulty)}">${data.difficulty.toUpperCase()}</span>`;
 
     const badge = qs('[data-badge]', this.root);
     badge.classList.toggle('is-on', data.isBest);

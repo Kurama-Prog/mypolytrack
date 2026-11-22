@@ -56,3 +56,11 @@ export function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+/**
+ * Difficulty badge classes. `Very Hard` must become `diff--very-hard`; the raw
+ * lowercase value would split into two class names and lose the styling.
+ */
+export function difficultyClass(difficulty: string): string {
+  return `diff diff--${difficulty.toLowerCase().replace(/\s+/g, '-')}`;
+}

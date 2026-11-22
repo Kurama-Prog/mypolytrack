@@ -1,5 +1,6 @@
 import type { BuiltTrack } from '../track/builder';
-import { createCar, resetCar, stepCar, type CarState } from '../physics/car';
+import type { HazardKind } from '../track/types';
+import { applyKnock, createCar, resetCar, stepCar, type CarState } from '../physics/car';
 import type { TuningStore } from '../physics/tuning';
 import type { DriveInput } from '../engine/input';
 import { GhostRecorder } from './ghost';
@@ -18,11 +19,14 @@ export interface RaceCallbacks {
   onCountdown?: (value: number | 'go') => void;
   onCheckpoint?: (index: number, total: number, split: number) => void;
   onRespawn?: () => void;
+  onHazard?: (kind: HazardKind) => void;
   onFinish?: (result: RaceResult) => void;
 }
 
 const START_S = 48;
 const COUNTDOWN_SECONDS = 3;
+/** Grace period after a knock so one obstacle cannot hit twice. */
+const HAZARD_GRACE = 0.9;
 
 export class RaceSession {
   readonly car: CarState;
@@ -35,6 +39,7 @@ export class RaceSession {
   private countdown = COUNTDOWN_SECONDS;
   private countdownMark = COUNTDOWN_SECONDS;
   private recorder = new GhostRecorder();
+  private hazardGrace = 0;
 
   constructor(
     readonly track: BuiltTrack,
@@ -54,6 +59,8 @@ export class RaceSession {
     this.countdown = COUNTDOWN_SECONDS;
     this.countdownMark = COUNTDOWN_SECONDS;
     this.recorder = new GhostRecorder();
+    this.hazardGrace = 0;
+    this.track.hazards?.reset();
     resetCar(this.car, this.track, START_S);
     this.callbacks.onCountdown?.(COUNTDOWN_SECONDS);
   }
@@ -66,8 +73,19 @@ export class RaceSession {
     if (this.phase !== 'racing') return;
 
     this.time += dt * 1000;
+    this.track.hazards?.advance(dt);
     stepCar(this.car, input, this.track, this.tuning.value, dt);
     this.recorder.record(this.time, this.car.pos, this.car.quat);
+
+    if (this.hazardGrace > 0) this.hazardGrace -= dt;
+    if (this.track.hazards && this.hazardGrace <= 0) {
+      const hit = this.track.hazards.hitTest(this.car.s, this.car.n);
+      if (hit) {
+        applyKnock(this.car, this.track);
+        this.hazardGrace = HAZARD_GRACE;
+        this.callbacks.onHazard?.(hit);
+      }
+    }
 
     if (this.car.pos.y < this.track.killY) {
       this.respawn();

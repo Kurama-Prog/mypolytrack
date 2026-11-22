@@ -114,7 +114,13 @@ export class CameraRig {
       if (this.desired.y < floor) this.desired.y = floor;
     }
 
-    this.tmp.copy(this.up).lerp(WORLD_UP, 0.32).normalize();
+    // On a wall run (surface up close to horizontal while the car still drives
+    // level) the roll is pulled further towards world up so the horizon — and
+    // the steering — stay readable. Vertical loops are excluded: there the
+    // camera should roll with the car, like a roller coaster.
+    const wallRun = this.up.y < 0.62 && Math.abs(this.forward.y) < 0.55;
+    const rollBlend = wallRun ? Math.min(0.72, 0.32 + (0.62 - this.up.y) * 0.9) : 0.32;
+    this.tmp.copy(this.up).lerp(WORLD_UP, rollBlend).normalize();
 
     if (snap || !this.initialised) {
       camera.position.copy(this.desired);

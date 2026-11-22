@@ -55,6 +55,15 @@ export function carvedGroundHeight(
 
 /** Cheap analytic probe shared by the ground mesh, props and the camera rig. */
 export function makeGroundProbe(def: TrackDef, query: TrackQuery) {
+  if (def.scenery.style === 'ocean') {
+    // The bridge floats 40 m above a flat sea; a constant probe keeps the rig
+    // from diving under the water plane.
+    return {
+      heightAt(): number {
+        return def.groundY;
+      }
+    };
+  }
   return {
     heightAt(x: number, z: number): number {
       return def.groundY + carvedGroundHeight(x, z, query, def.groundY);
@@ -109,6 +118,12 @@ const STYLES: Record<TrackDef['scenery']['style'], StyleColors> = {
     leaf: [0xdbe8f7, 0xc4dcf2, 0xa9cbe8],
     rock: 0x9fb6cc,
     peak: 0xdfeaf8
+  },
+  ocean: {
+    trunk: 0x3d5d78,
+    leaf: [0x4fb3d9, 0x3f9cc4, 0x6fcbe8],
+    rock: 0x8d9aa8,
+    peak: 0x26475f
   }
 };
 
@@ -152,6 +167,7 @@ export function createScenery(
 
   const rng = mulberry32(def.scenery.seed);
   const style = STYLES[def.scenery.style];
+  const ocean = def.scenery.style === 'ocean';
   const geometries: THREE.BufferGeometry[] = [];
 
   const trunkBase = new THREE.CylinderGeometry(0.5, 0.75, 2.4, 5).toNonIndexed();
@@ -179,8 +195,50 @@ export function createScenery(
     const z = sample.pos.z + sample.right.z * distance * side + sample.tangent.z * jitter;
     if (!place(x, z, sample.pos.y)) continue;
 
-    const groundY = def.groundY + carvedGroundHeight(x, z, query, def.groundY);
+    const groundY = ocean ? def.groundY : def.groundY + carvedGroundHeight(x, z, query, def.groundY);
     const kind = rng();
+
+    if (ocean) {
+      // Sea furniture: buoys, reef islands and the odd lighthouse.
+      if (kind < 0.55) {
+        const scale = 0.85 + rng() * 0.7;
+        const hull = new THREE.CylinderGeometry(0.95, 1.2, 1.5, 6).toNonIndexed();
+        hull.translate(0, 0.75, 0);
+        hull.scale(scale, scale, scale);
+        hull.translate(x, groundY, z);
+        geometries.push(paint(hull, new THREE.Color(0xff5a3c)));
+
+        const mast = new THREE.CylinderGeometry(0.14, 0.14, 3.1, 5).toNonIndexed();
+        mast.translate(0, 2.9, 0);
+        mast.scale(scale, scale, scale);
+        mast.translate(x, groundY, z);
+        geometries.push(paint(mast, new THREE.Color(0xdfeaf8)));
+
+        const lamp = new THREE.OctahedronGeometry(0.55, 0).toNonIndexed();
+        lamp.translate(x, groundY + 4.6 * scale, z);
+        geometries.push(paint(lamp, new THREE.Color(0xffc93c)));
+      } else if (kind < 0.93) {
+        const scale = 3 + rng() * 8;
+        const rock = rockBase.clone();
+        rock.scale(scale, scale * (0.25 + rng() * 0.35), scale);
+        rock.rotateY(rng() * Math.PI);
+        rock.translate(x, groundY + scale * 0.1, z);
+        const tint = new THREE.Color(style.rock);
+        tint.offsetHSL(0, 0, (rng() - 0.5) * 0.1);
+        geometries.push(paint(rock, tint));
+      } else {
+        const height = 14 + rng() * 10;
+        const tower = new THREE.CylinderGeometry(1.2, 2.4, height, 6).toNonIndexed();
+        tower.translate(0, height / 2, 0);
+        tower.translate(x, groundY, z);
+        geometries.push(paint(tower, new THREE.Color(0xf4f8fb)));
+
+        const cap = new THREE.ConeGeometry(2.0, 3.4, 6).toNonIndexed();
+        cap.translate(x, groundY + height + 1.7, z);
+        geometries.push(paint(cap, new THREE.Color(0xff5a3c)));
+      }
+      continue;
+    }
 
     if (kind < 0.62) {
       // Tree
@@ -230,7 +288,7 @@ export function createScenery(
   // Distant peaks framing the horizon. They orbit the *circuit* bounds — not
   // the world origin — so the far half of a circuit can never run through them.
   const peakColor = new THREE.Color(style.peak);
-  const peaks = 24;
+  const peaks = ocean ? 0 : 24;
   const peakMeta: PeakMeta[] = [];
 
   for (let i = 0; i < peaks; i++) {
@@ -251,6 +309,26 @@ export function createScenery(
     tint.offsetHSL(0, 0, (rng() - 0.5) * 0.1);
     geometries.push(paint(cone, tint));
     peakMeta.push({ x, z, radius: peakRadius, height });
+  }
+
+  // Ocean horizon: low island silhouettes instead of mountain peaks.
+  if (ocean) {
+    const islands = 20;
+    for (let i = 0; i < islands; i++) {
+      const angle = (i / islands) * Math.PI * 2 + rng() * 0.18;
+      const islandRadius = 130 + rng() * 220;
+      const distance = bounds.radius + 620 + rng() * 900;
+      const height = 34 + rng() * 96;
+      const x = bounds.center.x + Math.cos(angle) * distance;
+      const z = bounds.center.z + Math.sin(angle) * distance;
+      const cone = new THREE.ConeGeometry(islandRadius, height, 5).toNonIndexed();
+      cone.translate(0, height / 2, 0);
+      cone.rotateY(rng() * Math.PI);
+      cone.translate(x, def.groundY - 6, z);
+      const tint = peakColor.clone();
+      tint.offsetHSL(0, 0, (rng() - 0.5) * 0.12);
+      geometries.push(paint(cone, tint));
+    }
   }
 
   const peakClearance = measurePeakClearance(peakMeta, samples);

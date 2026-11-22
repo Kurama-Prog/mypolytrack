@@ -453,10 +453,10 @@ canvas {
 
 .track-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(12px, 1.4vw, 20px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(10px, 1.1vw, 18px);
   width: 100%;
-  max-width: 1180px;
+  max-width: 1460px;
 }
 
 .track-card {
@@ -481,6 +481,10 @@ canvas {
 
 .track-card:nth-child(3) {
   animation-delay: 0.14s;
+}
+
+.track-card:nth-child(4) {
+  animation-delay: 0.21s;
 }
 
 @keyframes card-in {
@@ -614,6 +618,14 @@ canvas {
 .diff--hard {
   color: var(--accent);
   background: rgba(255, 90, 60, 0.12);
+}
+
+.diff--very-hard {
+  color: #ff4d6d;
+  background: rgba(255, 45, 85, 0.16);
+  border-color: rgba(255, 77, 109, 0.75);
+  box-shadow: 0 0 14px -2px rgba(255, 45, 85, 0.7);
+  text-shadow: 0 0 10px rgba(255, 45, 85, 0.45);
 }
 
 .card-tag {
@@ -1877,13 +1889,9 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .track-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .track-card:last-child {
-    grid-column: span 2;
   }
 
   .menu-heading h2 {

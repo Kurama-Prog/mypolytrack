@@ -2,7 +2,7 @@ import { TRACKS } from '../track';
 import { buildCenterline } from '../track/builder';
 import type { TrackDef } from '../track/types';
 import type { TuningStore } from '../physics/tuning';
-import { element, formatTime, qsa } from './dom';
+import { difficultyClass, element, formatTime, qsa } from './dom';
 
 interface ThumbInfo {
   length: number;
@@ -132,7 +132,7 @@ export class Menu {
           </div>
         </div>
         <div class="menu-top-actions">
-          <div class="chip"><i class="dot"></i> THREE CIRCUITS</div>
+          <div class="chip"><i class="dot"></i> FOUR CIRCUITS</div>
           <button class="icon-btn" type="button" data-settings aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
               <circle cx="12" cy="12" r="3.2" />
@@ -147,7 +147,7 @@ export class Menu {
           <span class="eyebrow"><i></i> SELECT A CIRCUIT</span>
           <h2>CHASE THE<br /><em>PERFECT LINE.</em></h2>
           <p class="lede">
-            Three handcrafted low-poly circuits. Find grip, cut the apex and shave
+            Four handcrafted low-poly circuits. Find grip, cut the apex and shave
             milliseconds off your best run. Every thousandth counts.
           </p>
         </div>
@@ -183,7 +183,7 @@ export class Menu {
         <div class="card-body">
           <div class="card-row">
             <h3>${def.name}</h3>
-            <span class="diff diff--${def.difficulty.toLowerCase()}">${def.difficulty.toUpperCase()}</span>
+            <span class="${difficultyClass(def.difficulty)}">${def.difficulty.toUpperCase()}</span>
           </div>
           <p class="card-tag">${def.tagline}</p>
           <div class="card-meta">

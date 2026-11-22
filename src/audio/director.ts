@@ -111,6 +111,10 @@ export class AudioSystem {
     this.sfx.play('respawn');
   }
 
+  hazard(): void {
+    this.sfx.play('hazard');
+  }
+
   finish(best: boolean): void {
     this.sfx.play('finish');
     if (best) window.setTimeout(() => this.sfx.play('best'), 380);
